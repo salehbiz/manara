@@ -4,3 +4,4 @@ dist
 *.log
 Timelapse_construction_video_bui*
 ezgif-*
+.vercel
