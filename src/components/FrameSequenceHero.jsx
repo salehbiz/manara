@@ -27,30 +27,24 @@ export default function FrameSequenceHero({ onOpenBooking }) {
     };
   }, []);
 
-  // Seek to last frame on load so the completed building is the first thing shown
+  // Wait for enough buffered data, then seek to last frame (completed building)
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || isMobile) return;
 
-    const seekToEnd = () => {
+    const onReady = () => {
       video.currentTime = video.duration;
+      setLoading(false);
     };
 
-    const onSeeked = () => setLoading(false);
+    // canplaythrough = browser has the full video buffered, seeks are instant
+    video.addEventListener('canplaythrough', onReady, { once: true });
+    if (video.readyState >= 4) onReady();
 
-    video.addEventListener('loadedmetadata', seekToEnd, { once: true });
-    video.addEventListener('seeked', onSeeked, { once: true });
-
-    // Already have metadata (cached)
-    if (video.readyState >= 1) seekToEnd();
-
-    return () => {
-      video.removeEventListener('loadedmetadata', seekToEnd);
-      video.removeEventListener('seeked', onSeeked);
-    };
+    return () => video.removeEventListener('canplaythrough', onReady);
   }, [isMobile]);
 
-  // Scroll tracking — scrub video currentTime on desktop, noop on mobile (autoplay)
+  // Scroll tracking — scrub video currentTime on desktop
   useEffect(() => {
     if (reducedMotion || isMobile) return;
 
@@ -59,46 +53,49 @@ export default function FrameSequenceHero({ onOpenBooking }) {
     const handleScroll = () => {
       if (ticking) return;
       ticking = true;
+
       requestAnimationFrame(() => {
-        const container = scrollContainerRef.current;
-        if (container) {
-          const rect = container.getBoundingClientRect();
-          const scrollHeight = rect.height - window.innerHeight;
-
-          let progress = 0;
-          if (scrollHeight > 0) {
-            progress = Math.max(0, Math.min(1, -rect.top / scrollHeight));
-          }
-
-          // Overlay fades
-          if (fadeTagRef.current) {
-            const op = progress < 0.02 ? 1 : Math.max(0, 1 - (progress - 0.02) / 0.13);
-            fadeTagRef.current.style.opacity = op;
-            fadeTagRef.current.style.visibility = op === 0 ? 'hidden' : 'visible';
-          }
-          if (fadeContentRef.current) {
-            const op = progress < 0.02 ? 1 : Math.max(0, 1 - (progress - 0.02) / 0.13);
-            fadeContentRef.current.style.opacity = op;
-            fadeContentRef.current.style.visibility = op === 0 ? 'hidden' : 'visible';
-          }
-          if (fadeStatsRef.current) {
-            const op = progress < 0.02 ? 1 : Math.max(0, 1 - (progress - 0.02) / 0.13);
-            fadeStatsRef.current.style.opacity = op;
-            fadeStatsRef.current.style.visibility = op === 0 ? 'hidden' : 'visible';
-          }
-          if (scrollOverlayRef.current) {
-            const op = progress < 0.01 ? 1 : Math.max(0, 1 - progress / 0.20);
-            scrollOverlayRef.current.style.opacity = op;
-            scrollOverlayRef.current.style.pointerEvents = 'none';
-          }
-
-          // Scrub video — progress 0 = last frame (completed building), 1 = first frame
-          const video = videoRef.current;
-          if (video && video.duration) {
-            video.currentTime = (1 - progress) * video.duration;
-          }
-        }
+        // Always reset ticking so future scroll events aren't dropped
         ticking = false;
+
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        const rect = container.getBoundingClientRect();
+        const scrollHeight = rect.height - window.innerHeight;
+
+        let progress = 0;
+        if (scrollHeight > 0) {
+          progress = Math.max(0, Math.min(1, -rect.top / scrollHeight));
+        }
+
+        // Overlay fades
+        if (fadeTagRef.current) {
+          const op = progress < 0.02 ? 1 : Math.max(0, 1 - (progress - 0.02) / 0.13);
+          fadeTagRef.current.style.opacity = op;
+          fadeTagRef.current.style.visibility = op === 0 ? 'hidden' : 'visible';
+        }
+        if (fadeContentRef.current) {
+          const op = progress < 0.02 ? 1 : Math.max(0, 1 - (progress - 0.02) / 0.13);
+          fadeContentRef.current.style.opacity = op;
+          fadeContentRef.current.style.visibility = op === 0 ? 'hidden' : 'visible';
+        }
+        if (fadeStatsRef.current) {
+          const op = progress < 0.02 ? 1 : Math.max(0, 1 - (progress - 0.02) / 0.13);
+          fadeStatsRef.current.style.opacity = op;
+          fadeStatsRef.current.style.visibility = op === 0 ? 'hidden' : 'visible';
+        }
+        if (scrollOverlayRef.current) {
+          const op = progress < 0.01 ? 1 : Math.max(0, 1 - progress / 0.20);
+          scrollOverlayRef.current.style.opacity = op;
+          scrollOverlayRef.current.style.pointerEvents = 'none';
+        }
+
+        // Scrub: progress 0 = last frame (completed building), 1 = first frame
+        const video = videoRef.current;
+        if (video && isFinite(video.duration) && video.duration > 0) {
+          video.currentTime = (1 - progress) * video.duration;
+        }
       });
     };
 
@@ -118,6 +115,7 @@ export default function FrameSequenceHero({ onOpenBooking }) {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
+    display: 'block',
   };
 
   return (
@@ -127,11 +125,10 @@ export default function FrameSequenceHero({ onOpenBooking }) {
           {reducedMotion ? (
             <img
               src="/assets/hero-poster.jpg"
-              alt="Manara building drone view"
+              alt="Manara building"
               className="caesar-hero__fallback-img"
             />
           ) : isMobile ? (
-            // Mobile: autoplay loop, no scrubbing needed
             <video
               ref={videoRef}
               src="/assets/hero-video-portrait.mp4"
@@ -144,7 +141,6 @@ export default function FrameSequenceHero({ onOpenBooking }) {
               style={videoStyle}
             />
           ) : (
-            // Desktop: scrub via currentTime
             <>
               <video
                 ref={videoRef}
@@ -159,8 +155,9 @@ export default function FrameSequenceHero({ onOpenBooking }) {
               {loading && (
                 <img
                   src="/assets/hero-poster.jpg"
-                  alt="Manara building backdrop"
+                  alt="Manara building"
                   className="caesar-hero__fallback-img"
+                  style={{ position: 'absolute', inset: 0, zIndex: 1 }}
                 />
               )}
             </>
