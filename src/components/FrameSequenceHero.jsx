@@ -27,18 +27,27 @@ export default function FrameSequenceHero({ onOpenBooking }) {
     };
   }, []);
 
-  // Mark ready once the video has enough data to display a frame
+  // Seek to last frame on load so the completed building is the first thing shown
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const onReady = () => setLoading(false);
-    video.addEventListener('loadeddata', onReady, { once: true });
+    const seekToEnd = () => {
+      video.currentTime = video.duration;
+    };
 
-    // If already ready (cached)
-    if (video.readyState >= 2) setLoading(false);
+    const onSeeked = () => setLoading(false);
 
-    return () => video.removeEventListener('loadeddata', onReady);
+    video.addEventListener('loadedmetadata', seekToEnd, { once: true });
+    video.addEventListener('seeked', onSeeked, { once: true });
+
+    // Already have metadata (cached)
+    if (video.readyState >= 1) seekToEnd();
+
+    return () => {
+      video.removeEventListener('loadedmetadata', seekToEnd);
+      video.removeEventListener('seeked', onSeeked);
+    };
   }, [isMobile]);
 
   // Scroll tracking — scrub video currentTime on desktop, noop on mobile (autoplay)
@@ -83,10 +92,10 @@ export default function FrameSequenceHero({ onOpenBooking }) {
             scrollOverlayRef.current.style.pointerEvents = 'none';
           }
 
-          // Scrub video
+          // Scrub video — progress 0 = last frame (completed building), 1 = first frame
           const video = videoRef.current;
           if (video && video.duration) {
-            video.currentTime = progress * video.duration;
+            video.currentTime = (1 - progress) * video.duration;
           }
         }
         ticking = false;
