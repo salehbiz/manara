@@ -1,0 +1,6 @@
+node_modules
+dist
+.DS_Store
+*.log
+Timelapse_construction_video_bui*
+ezgif-*
