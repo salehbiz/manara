@@ -33,7 +33,6 @@ export default function FrameSequenceHero({ onOpenBooking }) {
     if (!video || isMobile) return;
 
     const onReady = () => {
-      video.currentTime = video.duration;
       setLoading(false);
     };
 
@@ -91,10 +90,10 @@ export default function FrameSequenceHero({ onOpenBooking }) {
           scrollOverlayRef.current.style.pointerEvents = 'none';
         }
 
-        // Scrub: progress 0 = last frame (completed building), 1 = first frame
+        // Scrub: progress 0 = first frame, 1 = last frame
         const video = videoRef.current;
         if (video && isFinite(video.duration) && video.duration > 0) {
-          video.currentTime = (1 - progress) * video.duration;
+          video.currentTime = progress * video.duration;
         }
       });
     };
