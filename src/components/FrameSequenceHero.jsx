@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 export default function FrameSequenceHero({ onOpenBooking }) {
-  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const fadeContentRef = useRef(null);
   const fadeStatsRef = useRef(null);
@@ -10,6 +10,12 @@ export default function FrameSequenceHero({ onOpenBooking }) {
   const [loading, setLoading] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const imagesRef = useRef([]);
+
+  const frameCount = 193;
+  const desktopFramePath = (index) => `/assets/hero-frames-new/frame_${String(index).padStart(6, '0')}.jpg`;
+  const mobileFramePath = (index) => `/assets/hero-frames-mobile/frame_${String(index).padStart(6, '0')}.jpg`;
+  const fallbackImgSrc = '/assets/hero-poster.jpg';
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -27,25 +33,86 @@ export default function FrameSequenceHero({ onOpenBooking }) {
     };
   }, []);
 
-  // Wait for enough buffered data, then seek to last frame (completed building)
+  // Preload image sequence into memory for desktop and mobile
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || isMobile) return;
-
-    const onReady = () => {
+    if (reducedMotion) {
       setLoading(false);
-    };
+      return;
+    }
 
-    // canplaythrough = browser has the full video buffered, seeks are instant
-    video.addEventListener('canplaythrough', onReady, { once: true });
-    if (video.readyState >= 4) onReady();
+    setLoading(true);
+    const images = [];
+    let loadedCount = 0;
+    const getFramePath = isMobile ? mobileFramePath : desktopFramePath;
 
-    return () => video.removeEventListener('canplaythrough', onReady);
-  }, [isMobile]);
+    for (let i = 1; i <= frameCount; i++) {
+      const img = new Image();
+      img.src = getFramePath(i);
+      img.onload = () => {
+        loadedCount++;
+        if (loadedCount === frameCount) {
+          imagesRef.current = images;
+          setLoading(false);
+          drawFrame(1); // Draw the first frame initially
+        }
+      };
+      img.onerror = () => {
+        loadedCount++;
+        if (loadedCount === frameCount) {
+          imagesRef.current = images;
+          setLoading(false);
+          drawFrame(1);
+        }
+      };
+      images.push(img);
+    }
+  }, [isMobile, reducedMotion]);
 
-  // Scroll tracking — scrub video currentTime on desktop
+  // Object-fit: cover equivalent canvas drawing
+  const drawFrame = (index) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const img = imagesRef.current[index - 1];
+    if (!img || !img.complete) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const imgRatio = img.width / img.height;
+    const canvasRatio = canvas.width / canvas.height;
+    let drawWidth, drawHeight, drawX, drawY;
+
+    if (imgRatio > canvasRatio) {
+      drawHeight = canvas.height;
+      drawWidth = canvas.height * imgRatio;
+      drawX = (canvas.width - drawWidth) / 2;
+      drawY = 0;
+    } else {
+      drawWidth = canvas.width;
+      drawHeight = canvas.width / imgRatio;
+      drawX = 0;
+      drawY = (canvas.height - drawHeight) / 2;
+    }
+
+    ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+  };
+
   useEffect(() => {
-    if (reducedMotion || isMobile) return;
+    if (reducedMotion || loading) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Handle high DPI retina screens without blurring the image
+    const resizeCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      handleScroll();
+    };
 
     let ticking = false;
 
@@ -54,7 +121,6 @@ export default function FrameSequenceHero({ onOpenBooking }) {
       ticking = true;
 
       requestAnimationFrame(() => {
-        // Always reset ticking so future scroll events aren't dropped
         ticking = false;
 
         const container = scrollContainerRef.current;
@@ -90,23 +156,25 @@ export default function FrameSequenceHero({ onOpenBooking }) {
           scrollOverlayRef.current.style.pointerEvents = 'none';
         }
 
-        // Scrub: progress 0 = first frame, 1 = last frame
-        const video = videoRef.current;
-        if (video && isFinite(video.duration) && video.duration > 0) {
-          video.currentTime = progress * video.duration;
+        if (imagesRef.current.length === frameCount) {
+          const frameIndex = progress === 0
+            ? 1
+            : Math.max(1, Math.min(frameCount, Math.round(progress * frameCount)));
+          drawFrame(frameIndex);
         }
       });
     };
 
+    window.addEventListener('resize', resizeCanvas);
     window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleScroll);
-    handleScroll();
+
+    resizeCanvas();
 
     return () => {
+      window.removeEventListener('resize', resizeCanvas);
       window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
     };
-  }, [reducedMotion, isMobile]);
+  }, [loading, reducedMotion, isMobile]);
 
   const videoStyle = {
     position: 'absolute',
@@ -123,37 +191,26 @@ export default function FrameSequenceHero({ onOpenBooking }) {
         <div className="caesar-hero__bg">
           {reducedMotion ? (
             <img
-              src="/assets/hero-poster.jpg"
+              src={isMobile ? "/assets/hero-poster-portrait.jpg" : "/assets/hero-poster.jpg"}
               alt="Manara building"
               className="caesar-hero__fallback-img"
             />
-          ) : isMobile ? (
-            <video
-              ref={videoRef}
-              src="/assets/hero-video-portrait.mp4"
-              poster="/assets/hero-poster-portrait.jpg"
-              autoPlay
-              loop
-              muted
-              playsInline
-              disablePictureInPicture
-              style={videoStyle}
-            />
           ) : (
             <>
-              <video
-                ref={videoRef}
-                src="/assets/hero-video.mp4"
-                poster="/assets/hero-poster.jpg"
-                preload="auto"
-                muted
-                playsInline
-                disablePictureInPicture
-                style={videoStyle}
+              <canvas
+                ref={canvasRef}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block',
+                }}
               />
               {loading && (
                 <img
-                  src="/assets/hero-poster.jpg"
+                  src={isMobile ? "/assets/hero-poster-portrait.jpg" : fallbackImgSrc}
                   alt="Manara building"
                   className="caesar-hero__fallback-img"
                   style={{ position: 'absolute', inset: 0, zIndex: 1 }}

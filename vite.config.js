@@ -11,6 +11,9 @@ export default defineConfig({
       ignored: [
         '**/node_modules/**',
         '**/dist/**',
+        '**/public/assets/hero-frames-webp/**',
+        '**/Timelapse_construction_video_bui…_202606210154_frames/**',
+        '**/ezgif-5be850e013b314e8-jpg/**',
       ],
     },
   },
